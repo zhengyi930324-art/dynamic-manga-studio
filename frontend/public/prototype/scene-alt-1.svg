@@ -1,0 +1,31 @@
+<svg width="900" height="900" viewBox="0 0 900 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="900" height="900" fill="#080910"/>
+  <rect width="900" height="900" fill="url(#bg)"/>
+  <circle cx="694" cy="173" r="118" fill="#9C5DFF" fill-opacity="0.2"/>
+  <circle cx="232" cy="260" r="198" fill="#24DFFF" fill-opacity="0.12"/>
+  <rect x="100" y="328" width="97" height="402" rx="16" fill="#0E1020"/>
+  <rect x="223" y="270" width="90" height="460" rx="16" fill="#141834"/>
+  <rect x="345" y="370" width="114" height="360" rx="16" fill="#0D1020"/>
+  <rect x="498" y="220" width="108" height="510" rx="16" fill="#121629"/>
+  <rect x="636" y="284" width="124" height="446" rx="16" fill="#090B15"/>
+  <rect x="123" y="384" width="14" height="239" rx="7" fill="#24DFFF"/>
+  <rect x="256" y="344" width="16" height="268" rx="8" fill="#FF58D8"/>
+  <rect x="528" y="295" width="18" height="292" rx="9" fill="#24DFFF"/>
+  <rect x="693" y="366" width="16" height="245" rx="8" fill="#C386FF"/>
+  <path d="M0 752C139 704 227 720 372 752C494 780 587 806 688 788C770 774 824 752 900 738V900H0V752Z" fill="#06070F"/>
+  <path d="M0 787C129 756 250 770 385 799C533 831 656 842 758 816C829 798 869 776 900 765V900H0V787Z" fill="#0D1221"/>
+  <path d="M520 900L590 697L665 900H520Z" fill="url(#subject)"/>
+  <path d="M579 640C610 640 636 615 636 584C636 552 610 527 579 527C548 527 522 552 522 584C522 615 548 640 579 640Z" fill="#121624"/>
+  <path d="M563 527C575 511 597 505 614 513C607 486 594 468 580 468C567 468 552 485 544 511C552 508 559 510 563 527Z" fill="#24DFFF"/>
+  <defs>
+    <linearGradient id="bg" x1="450" y1="0" x2="450" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#161B39"/>
+      <stop offset="0.55" stop-color="#0C101A"/>
+      <stop offset="1" stop-color="#04050A"/>
+    </linearGradient>
+    <linearGradient id="subject" x1="592.5" y1="697" x2="592.5" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F1223"/>
+      <stop offset="1" stop-color="#090C15"/>
+    </linearGradient>
+  </defs>
+</svg>

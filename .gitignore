@@ -2,5 +2,17 @@
 .venv/
 tmp/
 output/
+.env
+frontend/node_modules/
+frontend/.vite/
+frontend/.next/
+frontend/dist/
+backend/.pytest_cache/
+backend/__pycache__/
+**/__pycache__/
+data/*.db
+data/*runtime/
+data/projects/*
+!data/projects/.gitkeep
 *.pyc
 __pycache__/

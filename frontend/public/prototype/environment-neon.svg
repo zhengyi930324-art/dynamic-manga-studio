@@ -1,0 +1,20 @@
+<svg width="1200" height="675" viewBox="0 0 1200 675" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="675" fill="#05060B"/>
+  <rect width="1200" height="675" fill="url(#bg)"/>
+  <path d="M0 675V119L205 98L335 148L473 94L686 157L837 107L1021 140L1200 121V675H0Z" fill="#06070E"/>
+  <path d="M0 675V160L195 141L352 188L479 143L690 206L818 152L1023 184L1200 170V675H0Z" fill="#0D1020"/>
+  <path d="M165 675V79" stroke="#24DFFF" stroke-opacity="0.38" stroke-width="10"/>
+  <path d="M410 675V122" stroke="#C386FF" stroke-opacity="0.4" stroke-width="12"/>
+  <path d="M682 675V88" stroke="#24DFFF" stroke-opacity="0.35" stroke-width="8"/>
+  <path d="M951 675V133" stroke="#FF58D8" stroke-opacity="0.33" stroke-width="10"/>
+  <path d="M100 322H291" stroke="#24DFFF" stroke-width="8" stroke-linecap="round"/>
+  <path d="M355 278H579" stroke="#C386FF" stroke-width="8" stroke-linecap="round"/>
+  <path d="M749 352H1005" stroke="#24DFFF" stroke-width="8" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="bg" x1="600" y1="0" x2="600" y2="675" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#141A32"/>
+      <stop offset="0.46" stop-color="#0B0C12"/>
+      <stop offset="1" stop-color="#05060A"/>
+    </linearGradient>
+  </defs>
+</svg>
