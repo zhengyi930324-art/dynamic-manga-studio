@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
+from app.core.config import PROJECT_ROOT, get_settings
 from app.models.project import Project, ProjectStatus
 from app.models.storyboard import StoryCharacter, StoryDialogue, StoryShot, StoryboardDraft
 from app.schemas.project import (
     CreateProjectRequest,
     ProjectDetailResponse,
     ProjectListItemResponse,
+    VideoGenerationPlanResponse,
 )
 from app.storage.file_store import ProjectFileStore
 
@@ -31,7 +33,7 @@ class ProjectService:
             title=payload.title,
             source_text=payload.source_text,
             genre=payload.genre,
-            style_template=payload.style_template,
+            style_template=payload.video_style or payload.style_template,
             target_duration=payload.target_duration,
             voice_style=payload.voice_style,
         )
@@ -41,7 +43,14 @@ class ProjectService:
 
         self.file_store.save_project_snapshot(
             project.id,
-            self._serialize_project(project),
+            self._serialize_project(
+                project,
+                snapshot_overrides={
+                    "video_style": payload.video_style or payload.style_template,
+                    "aspect_ratio": payload.aspect_ratio,
+                    "bgm_style": payload.bgm_style,
+                },
+            ),
         )
         return project
 
@@ -89,10 +98,17 @@ class ProjectService:
 
     def build_project_detail(self, project_id: str) -> ProjectDetailResponse:
         project = self._require_project(project_id)
+        raw_video_plan = self.file_store.load_video_plan(project.id)
+        video_plan = (
+            VideoGenerationPlanResponse.model_validate(raw_video_plan)
+            if raw_video_plan is not None
+            else None
+        )
         return ProjectDetailResponse.model_validate(
             {
                 **self._serialize_project(project),
                 "storage": self.file_store.build_storage_paths(project.id),
+                "video_plan": video_plan,
                 "storyboard": self.load_storyboard(project.id),
                 "assets": self.file_store.list_generated_assets(project.id),
             }
@@ -104,15 +120,31 @@ class ProjectService:
             raise ValueError(f"项目不存在: {project_id}")
         return project
 
-    def _serialize_project(self, project: Project) -> dict[str, object]:
-        return {
+    def _serialize_project(
+        self,
+        project: Project,
+        snapshot_overrides: Optional[dict[str, Optional[str]]] = None,
+    ) -> dict[str, object]:
+        snapshot = self.file_store.load_project_snapshot(project.id) or {}
+        if snapshot_overrides:
+            snapshot.update(
+                {
+                    field_name: value
+                    for field_name, value in snapshot_overrides.items()
+                    if value is not None
+                }
+            )
+        payload = {
             "id": project.id,
             "title": project.title,
             "source_text": project.source_text,
             "genre": project.genre,
             "style_template": project.style_template,
+            "video_style": self._snapshot_value(snapshot, "video_style", project.style_template),
             "target_duration": project.target_duration,
             "voice_style": project.voice_style,
+            "aspect_ratio": self._snapshot_value(snapshot, "aspect_ratio"),
+            "bgm_style": self._snapshot_value(snapshot, "bgm_style"),
             "status": project.status.value,
             "created_at": project.created_at.isoformat()
             if project.created_at
@@ -121,8 +153,10 @@ class ProjectService:
             if project.updated_at
             else None,
         }
+        return payload
 
     def _build_project_summary(self, project: Project) -> ProjectListItemResponse:
+        snapshot = self.file_store.load_project_snapshot(project.id) or {}
         storyboard = self.file_store.load_storyboard(project.id)
         assets = self.file_store.list_generated_assets(project.id)
         asset_count = sum(len(asset_group) for asset_group in assets.values())
@@ -132,8 +166,11 @@ class ProjectService:
                 "title": project.title,
                 "genre": project.genre,
                 "style_template": project.style_template,
+                "video_style": snapshot.get("video_style") or project.style_template,
                 "target_duration": project.target_duration,
                 "voice_style": project.voice_style,
+                "aspect_ratio": snapshot.get("aspect_ratio"),
+                "bgm_style": snapshot.get("bgm_style"),
                 "status": project.status,
                 "updated_at": project.updated_at,
                 "created_at": project.created_at,
@@ -142,6 +179,15 @@ class ProjectService:
                 "asset_count": asset_count,
             }
         )
+
+    def _snapshot_value(
+        self,
+        snapshot: dict[str, object],
+        field_name: str,
+        fallback: Optional[str] = None,
+    ) -> Optional[str]:
+        value = snapshot.get(field_name)
+        return value if isinstance(value, str) and value.strip() else fallback
 
     def _normalize_storyboard(self, storyboard: StoryboardDraft) -> StoryboardDraft:
         normalized_characters = [
@@ -211,5 +257,8 @@ class ProjectService:
 
 def create_project_service(session: Session) -> ProjectService:
     settings = get_settings()
-    file_store = ProjectFileStore(settings.data_root)
+    data_root = Path(settings.data_root)
+    if not data_root.is_absolute():
+        data_root = PROJECT_ROOT / data_root
+    file_store = ProjectFileStore(data_root)
     return ProjectService(session=session, file_store=file_store)

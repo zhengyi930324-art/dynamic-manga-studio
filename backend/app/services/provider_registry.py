@@ -24,6 +24,27 @@ class AssetProvider(Protocol):
     def generate_tts(self, project: Project, payload: dict[str, str]) -> dict[str, Any]:
         ...
 
+    def create_video_segment_task(
+        self,
+        project: Project,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        ...
+
+    def get_video_segment_task_status(
+        self,
+        project: Project,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        ...
+
+    def download_generated_video(
+        self,
+        project: Project,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        ...
+
 
 class LocalMockProvider:
     key = "local_mock"
@@ -59,6 +80,50 @@ class LocalMockProvider:
             "voice_id": payload.get("voice_id") or "mock-voice",
             "script": payload.get("script", ""),
             "target_id": payload.get("target_id", ""),
+        }
+
+    def create_video_segment_task(
+        self,
+        project: Project,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        target_id = str(payload.get("target_id", ""))
+        return {
+            "asset_type": JobType.video_segment.value,
+            "provider": self.key,
+            "task_id": f"mock-task-{target_id}",
+            "status": "submitted",
+            "target_id": target_id,
+            "prompt": payload.get("prompt", ""),
+        }
+
+    def get_video_segment_task_status(
+        self,
+        project: Project,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        task_id = str(payload.get("task_id", ""))
+        target_id = str(payload.get("target_id", ""))
+        return {
+            "provider": self.key,
+            "task_id": task_id,
+            "status": "completed",
+            "file_id": f"mock-file-{target_id}",
+            "target_id": target_id,
+        }
+
+    def download_generated_video(
+        self,
+        project: Project,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        target_id = str(payload.get("target_id", ""))
+        file_id = str(payload.get("file_id", ""))
+        return {
+            "provider": self.key,
+            "file_id": file_id,
+            "video_url": f"https://mock.local/{target_id}.mp4",
+            "target_id": target_id,
         }
 
 
@@ -141,6 +206,107 @@ class ArkMiniMaxProvider:
             "target_id": payload.get("target_id", ""),
         }
 
+    def create_video_segment_task(
+        self,
+        project: Project,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        if not self.settings.minimax_api_key:
+            raise ValueError("未配置 MiniMax API Key")
+
+        request_payload = {
+            "model": payload.get("model") or self.settings.minimax_video_model,
+            "prompt": payload.get("prompt", ""),
+            "duration": payload.get("duration")
+            or self.settings.minimax_video_duration_seconds,
+            "resolution": payload.get("resolution")
+            or self.settings.minimax_video_resolution,
+        }
+        response = self._post_json(
+            f"{self.settings.minimax_base_url}/video_generation",
+            headers={
+                "Authorization": f"Bearer {self.settings.minimax_api_key}",
+                "Content-Type": "application/json",
+            },
+            payload=request_payload,
+        )
+        task_id = response.get("task_id")
+        if not isinstance(task_id, str) or not task_id:
+            raise ValueError("MiniMax 文生视频未返回 task_id")
+
+        return {
+            "asset_type": JobType.video_segment.value,
+            "provider": self.key,
+            "model": request_payload["model"],
+            "task_id": task_id,
+            "status": "submitted",
+            "target_id": payload.get("target_id", ""),
+            "prompt": request_payload["prompt"],
+            "duration": request_payload["duration"],
+            "resolution": request_payload["resolution"],
+        }
+
+    def get_video_segment_task_status(
+        self,
+        project: Project,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        if not self.settings.minimax_api_key:
+            raise ValueError("未配置 MiniMax API Key")
+
+        task_id = payload.get("task_id", "")
+        response = self._get_json(
+            f"{self.settings.minimax_base_url}/query/video_generation",
+            headers={
+                "Authorization": f"Bearer {self.settings.minimax_api_key}",
+            },
+            params={"task_id": task_id},
+        )
+        raw_status = response.get("status")
+        file_id = response.get("file_id")
+        normalized_status = self._normalize_video_task_status(raw_status)
+
+        return {
+            "provider": self.key,
+            "task_id": task_id,
+            "status": normalized_status,
+            "raw_status": raw_status,
+            "file_id": file_id if isinstance(file_id, str) else None,
+            "target_id": payload.get("target_id", ""),
+            "video_width": response.get("video_width"),
+            "video_height": response.get("video_height"),
+        }
+
+    def download_generated_video(
+        self,
+        project: Project,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        if not self.settings.minimax_api_key:
+            raise ValueError("未配置 MiniMax API Key")
+
+        file_id = payload.get("file_id", "")
+        response = self._get_json(
+            f"{self.settings.minimax_base_url}/files/retrieve",
+            headers={
+                "Authorization": f"Bearer {self.settings.minimax_api_key}",
+            },
+            params={"file_id": file_id},
+        )
+        file_payload = response.get("file") or {}
+        download_url = file_payload.get("download_url")
+        if not isinstance(download_url, str) or not download_url:
+            raise ValueError("MiniMax 视频下载接口未返回 download_url")
+
+        return {
+            "provider": self.key,
+            "file_id": str(file_payload.get("file_id") or file_id),
+            "video_url": download_url,
+            "target_id": payload.get("target_id", ""),
+            "filename": file_payload.get("filename"),
+            "bytes": file_payload.get("bytes"),
+        }
+
     def _generate_image(
         self,
         project: Project,
@@ -217,6 +383,34 @@ class ArkMiniMaxProvider:
             response = client.post(url, headers=headers, json=payload)
             response.raise_for_status()
             return response.json()
+
+    def _get_json(
+        self,
+        url: str,
+        headers: dict[str, str],
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
+        if self.client is not None:
+            response = self.client.get(url, headers=headers, params=params, timeout=120)
+            response.raise_for_status()
+            return response.json()
+
+        with httpx.Client(timeout=120) as client:
+            response = client.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            return response.json()
+
+    def _normalize_video_task_status(self, raw_status: Any) -> str:
+        if not isinstance(raw_status, str):
+            return "unknown"
+        status_map = {
+            "Preparing": "preparing",
+            "Queueing": "queueing",
+            "Processing": "processing",
+            "Success": "completed",
+            "Fail": "failed",
+        }
+        return status_map.get(raw_status, raw_status.lower())
 
 
 class ProviderRegistry:

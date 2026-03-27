@@ -22,6 +22,12 @@ class ProjectFileStore:
     def get_storyboard_file(self, project_id: str) -> Path:
         return self.get_project_dir(project_id) / "draft" / "storyboard.json"
 
+    def get_video_dir(self, project_id: str) -> Path:
+        return self.get_project_dir(project_id) / "video"
+
+    def get_video_plan_file(self, project_id: str) -> Path:
+        return self.get_video_dir(project_id) / "plan.json"
+
     def get_assets_dir(self, project_id: str) -> Path:
         return self.get_project_dir(project_id) / "assets"
 
@@ -31,6 +37,7 @@ class ProjectFileStore:
     def ensure_project_dirs(self, project_id: str) -> None:
         project_dir = self.get_project_dir(project_id)
         (project_dir / "draft").mkdir(parents=True, exist_ok=True)
+        self.get_video_dir(project_id).mkdir(parents=True, exist_ok=True)
         self.get_assets_dir(project_id).mkdir(parents=True, exist_ok=True)
         self.get_exports_dir(project_id).mkdir(parents=True, exist_ok=True)
 
@@ -70,11 +77,21 @@ class ProjectFileStore:
             return None
         return StoryboardDraft.model_validate(raw_storyboard)
 
+    def save_video_plan(self, project_id: str, payload: dict[str, Any]) -> Path:
+        self.ensure_project_dirs(project_id)
+        plan_file = self.get_video_plan_file(project_id)
+        self.write_json(plan_file, payload)
+        return plan_file
+
+    def load_video_plan(self, project_id: str) -> Optional[dict[str, Any]]:
+        return self.read_json(self.get_video_plan_file(project_id))
+
     def build_storage_paths(self, project_id: str) -> dict[str, str]:
         return {
             "project_dir": str(self.get_project_dir(project_id)),
             "project_file": str(self.get_project_file(project_id)),
             "storyboard_file": str(self.get_storyboard_file(project_id)),
+            "video_plan_file": str(self.get_video_plan_file(project_id)),
             "assets_dir": str(self.get_assets_dir(project_id)),
             "exports_dir": str(self.get_exports_dir(project_id)),
         }

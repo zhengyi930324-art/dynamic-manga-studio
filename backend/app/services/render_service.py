@@ -15,6 +15,7 @@ from app.schemas.project import (
     PreviewTimelineResponse,
     TimelineAudioTrackResponse,
     TimelineShotResponse,
+    VideoGenerationPlanResponse,
 )
 from app.services.project_service import ProjectService
 from app.storage.file_store import ProjectFileStore
@@ -32,50 +33,29 @@ class RenderService:
 
     def build_preview_timeline(self, project_id: str) -> PreviewTimelineResponse:
         self.project_service._require_project(project_id)
-        storyboard = self._require_storyboard(project_id)
+        raw_video_plan = self.file_store.load_video_plan(project_id)
+        video_plan = (
+            VideoGenerationPlanResponse.model_validate(raw_video_plan)
+            if raw_video_plan is not None
+            else None
+        )
 
-        timeline_shots: list[TimelineShotResponse] = []
-        audio_tracks: list[TimelineAudioTrackResponse] = []
-        total_duration = 0
-
-        for index, shot in enumerate(storyboard.shots, start=1):
-            scene_asset = (
-                self.file_store.load_generated_asset(project_id, "scene_image", shot.scene_id or "")
-                if shot.scene_id
-                else None
+        if video_plan and self._has_video_segment_assets(video_plan):
+            timeline_shots, audio_tracks, render_mode = self._build_video_segment_timeline(video_plan)
+        elif video_plan and self._has_ready_remote_segment_selection(video_plan):
+            raise ValueError(
+                "当前环境已拿到远程视频片段，但本地缓存失败。请配置 HTTP_PROXY_URL 或 VIDEO_DOWNLOAD_PROXY_URL 后重试。"
             )
-            tts_asset = self.file_store.load_generated_asset(project_id, "tts", shot.id)
-            audio_segments = self._extract_audio_segments(project_id, shot, tts_asset)
-            character_asset_paths = self._extract_character_asset_paths(project_id, shot)
-
-            duration = self._resolve_shot_duration(
-                shot=shot,
-                suggested_duration=storyboard.suggested_duration,
-                shot_count=len(storyboard.shots),
-                audio_segments=audio_segments,
+        else:
+            storyboard = self._require_storyboard(project_id)
+            timeline_shots, audio_tracks, render_mode = self._build_storyboard_timeline(
+                project_id=project_id,
+                storyboard=storyboard,
             )
-            timeline_shot = TimelineShotResponse(
-                order=index,
-                shot_id=shot.id,
-                title=shot.title,
-                duration_seconds=duration,
-                subtitle=self._build_subtitle(shot),
-                narration=shot.narration,
-                scene_asset_path=self._extract_asset_path(scene_asset),
-                character_asset_paths=character_asset_paths,
-                audio_segments=audio_segments,
-            )
-            timeline_shots.append(timeline_shot)
-            audio_tracks.extend(audio_segments)
 
         total_duration = self._resolve_total_duration(timeline_shots)
-        scene_asset_count = sum(1 for shot in timeline_shots if shot.scene_asset_path)
+        scene_asset_count = sum(1 for shot in timeline_shots if shot.scene_asset_path or shot.video_asset_path)
         audio_asset_count = sum(1 for shot in timeline_shots if shot.audio_segments)
-        render_mode = self._resolve_render_mode(
-            shot_count=len(timeline_shots),
-            scene_asset_count=scene_asset_count,
-            audio_asset_count=audio_asset_count,
-        )
 
         preview_path = self._preview_file(project_id)
         payload = {
@@ -107,6 +87,19 @@ class RenderService:
         return ExportStatusResponse.model_validate(raw_status)
 
     def export_project(self, project_id: str) -> ExportStatusResponse:
+        raw_video_plan = self.file_store.load_video_plan(project_id)
+        if raw_video_plan is not None:
+            video_plan = VideoGenerationPlanResponse.model_validate(raw_video_plan)
+            if self._has_ready_remote_segment_selection(video_plan) and not self._has_complete_video_segment_selection(video_plan):
+                return self._write_export_status(
+                    project_id=project_id,
+                    status="failed",
+                    render_mode="video_segments",
+                    error_message=(
+                        "当前环境已拿到远程视频片段，但本地缓存失败。"
+                        "请配置 HTTP_PROXY_URL 或 VIDEO_DOWNLOAD_PROXY_URL 后重试导出。"
+                    ),
+                )
         preview = self.build_preview_timeline(project_id)
         self._write_export_status(
             project_id=project_id,
@@ -165,6 +158,78 @@ class RenderService:
             scene_asset_count=preview.scene_asset_count,
             audio_asset_count=preview.audio_asset_count,
         )
+
+    def _build_storyboard_timeline(
+        self,
+        project_id: str,
+        storyboard,
+    ) -> tuple[list[TimelineShotResponse], list[TimelineAudioTrackResponse], str]:
+        timeline_shots: list[TimelineShotResponse] = []
+        audio_tracks: list[TimelineAudioTrackResponse] = []
+
+        for index, shot in enumerate(storyboard.shots, start=1):
+            scene_asset = (
+                self.file_store.load_generated_asset(project_id, "scene_image", shot.scene_id or "")
+                if shot.scene_id
+                else None
+            )
+            tts_asset = self.file_store.load_generated_asset(project_id, "tts", shot.id)
+            audio_segments = self._extract_audio_segments(project_id, shot, tts_asset)
+            character_asset_paths = self._extract_character_asset_paths(project_id, shot)
+
+            duration = self._resolve_shot_duration(
+                shot=shot,
+                suggested_duration=storyboard.suggested_duration,
+                shot_count=len(storyboard.shots),
+                audio_segments=audio_segments,
+            )
+            timeline_shot = TimelineShotResponse(
+                order=index,
+                shot_id=shot.id,
+                title=shot.title,
+                duration_seconds=duration,
+                subtitle=self._build_subtitle(shot),
+                narration=shot.narration,
+                scene_asset_path=self._extract_asset_path(scene_asset),
+                character_asset_paths=character_asset_paths,
+                audio_segments=audio_segments,
+            )
+            timeline_shots.append(timeline_shot)
+            audio_tracks.extend(audio_segments)
+
+        render_mode = self._resolve_render_mode(
+            shot_count=len(timeline_shots),
+            scene_asset_count=sum(1 for shot in timeline_shots if shot.scene_asset_path),
+            audio_asset_count=sum(1 for shot in timeline_shots if shot.audio_segments),
+        )
+        return timeline_shots, audio_tracks, render_mode
+
+    def _build_video_segment_timeline(
+        self,
+        video_plan: VideoGenerationPlanResponse,
+    ) -> tuple[list[TimelineShotResponse], list[TimelineAudioTrackResponse], str]:
+        timeline_shots: list[TimelineShotResponse] = []
+        for index, segment in enumerate(video_plan.segments, start=1):
+            selected_variant = self._selected_variant(segment)
+            if selected_variant is None or not selected_variant.video_asset_path:
+                continue
+            video_asset_path = Path(selected_variant.video_asset_path)
+            if not video_asset_path.exists():
+                continue
+            duration = self._probe_media_duration(video_asset_path) or selected_variant.duration_seconds or 6
+            timeline_shots.append(
+                TimelineShotResponse(
+                    order=index,
+                    shot_id=segment.segment_id,
+                    title=segment.title,
+                    duration_seconds=max(math.ceil(duration), 2),
+                    subtitle=segment.summary,
+                    narration=segment.summary,
+                    video_asset_path=str(video_asset_path),
+                    audio_segments=[],
+                )
+            )
+        return timeline_shots, [], "video_segments"
 
     def _require_storyboard(self, project_id: str):
         storyboard = self.project_service.load_storyboard(project_id)
@@ -428,11 +493,18 @@ class RenderService:
                 segment_files: list[Path] = []
                 for shot in preview.shots:
                     segment_file = temp_dir_path / f"{shot.order:03d}-{shot.shot_id}.mp4"
-                    self._render_shot_segment(
-                        ffmpeg_executable=ffmpeg_executable,
-                        shot=shot,
-                        segment_file=segment_file,
-                    )
+                    if shot.video_asset_path and Path(shot.video_asset_path).exists():
+                        self._prepare_video_segment_asset(
+                            ffmpeg_executable=ffmpeg_executable,
+                            shot=shot,
+                            segment_file=segment_file,
+                        )
+                    else:
+                        self._render_shot_segment(
+                            ffmpeg_executable=ffmpeg_executable,
+                            shot=shot,
+                            segment_file=segment_file,
+                        )
                     segment_files.append(segment_file)
 
                 command = [ffmpeg_executable, "-y"]
@@ -644,6 +716,47 @@ class RenderService:
             error_message = result.stderr.strip() or f"镜头片段导出失败: {shot.title}"
             raise RuntimeError(error_message)
 
+    def _prepare_video_segment_asset(
+        self,
+        ffmpeg_executable: str,
+        shot: TimelineShotResponse,
+        segment_file: Path,
+    ) -> None:
+        if not shot.video_asset_path or not Path(shot.video_asset_path).exists():
+            raise RuntimeError(f"视频片段不存在: {shot.title}")
+
+        duration = max(shot.duration_seconds, 2)
+        command = [
+            ffmpeg_executable,
+            "-y",
+            "-i",
+            shot.video_asset_path,
+            "-f",
+            "lavfi",
+            "-t",
+            str(duration),
+            "-i",
+            "anullsrc=channel_layout=stereo:sample_rate=44100",
+            "-filter_complex",
+            "[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p[vout]",
+            "-map",
+            "[vout]",
+            "-map",
+            "1:a",
+            "-c:v",
+            "libx264",
+            "-c:a",
+            "aac",
+            "-shortest",
+            "-movflags",
+            "+faststart",
+            str(segment_file),
+        ]
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            error_message = result.stderr.strip() or f"视频片段预处理失败: {shot.title}"
+            raise RuntimeError(error_message)
+
     def _resolve_overlay_positions(self, count: int) -> list[str]:
         if count <= 1:
             return ["(W-w)/2"]
@@ -666,6 +779,53 @@ class RenderService:
         if scene_asset_count > 0 or audio_asset_count > 0:
             return "mixed"
         return "placeholder"
+
+    def _has_video_segment_assets(self, video_plan: VideoGenerationPlanResponse) -> bool:
+        for segment in video_plan.segments:
+            selected_variant = self._selected_variant(segment)
+            if selected_variant and selected_variant.video_asset_path:
+                asset_path = Path(selected_variant.video_asset_path)
+                if asset_path.exists():
+                    return True
+        return False
+
+    def _has_complete_video_segment_selection(
+        self,
+        video_plan: VideoGenerationPlanResponse,
+    ) -> bool:
+        if not video_plan.segments:
+            return False
+        for segment in video_plan.segments:
+            selected_variant = self._selected_variant(segment)
+            if selected_variant is None or not selected_variant.video_asset_path:
+                return False
+            if not Path(selected_variant.video_asset_path).exists():
+                return False
+        return True
+
+    def _has_ready_remote_segment_selection(
+        self,
+        video_plan: VideoGenerationPlanResponse,
+    ) -> bool:
+        if not video_plan.segments:
+            return False
+        for segment in video_plan.segments:
+            selected_variant = self._selected_variant(segment)
+            if selected_variant is None or selected_variant.status != "completed":
+                return False
+            if not selected_variant.video_asset_path and not selected_variant.remote_video_url:
+                return False
+        return True
+
+    def _selected_variant(self, segment) -> Optional[Any]:
+        if segment.selected_variant_id:
+            for variant in segment.variants:
+                if variant.variant_id == segment.selected_variant_id:
+                    return variant
+        for variant in segment.variants:
+            if variant.status == "completed" and variant.video_asset_path:
+                return variant
+        return None
 
 
 def create_render_service(project_service: ProjectService) -> RenderService:

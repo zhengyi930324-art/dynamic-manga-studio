@@ -6,7 +6,7 @@ export type ProjectStatus =
   | "exported"
   | "failed";
 
-export type ProjectAssetType = "character_image" | "scene_image" | "tts";
+export type ProjectAssetType = "character_image" | "scene_image" | "tts" | "video_segment";
 
 export type GenerationJobStatus = "pending" | "running" | "failed" | "completed";
 
@@ -68,8 +68,38 @@ export type ProjectStoragePaths = {
   project_dir: string;
   project_file: string;
   storyboard_file: string;
+  video_plan_file: string;
   assets_dir: string;
   exports_dir: string;
+};
+
+export type VideoSegmentVariant = {
+  variant_id: string;
+  label: string;
+  status: "pending" | "submitted" | "running" | "completed" | "failed";
+  video_asset_path?: string | null;
+  remote_video_url?: string | null;
+  thumbnail_asset_path?: string | null;
+  provider_task_id?: string | null;
+  provider_file_id?: string | null;
+  raw_status?: string | null;
+  error_message?: string | null;
+  duration_seconds?: number | null;
+};
+
+export type VideoSegment = {
+  segment_id: string;
+  title: string;
+  summary: string;
+  prompt: string;
+  selected_variant_id?: string | null;
+  variants: VideoSegmentVariant[];
+};
+
+export type VideoGenerationPlan = {
+  segment_count: number;
+  global_style_bible: Record<string, string>;
+  segments: VideoSegment[];
 };
 
 export type ProjectAssetPayload = {
@@ -130,6 +160,7 @@ export type PreviewTimelineShot = {
   duration_seconds: number;
   subtitle: string;
   narration?: string | null;
+  video_asset_path?: string | null;
   scene_asset_path?: string | null;
   character_asset_paths: string[];
   audio_segments: PreviewTimelineAudioTrack[];
@@ -141,7 +172,7 @@ export type PreviewTimeline = {
   preview_file: string;
   total_duration: number;
   shot_count: number;
-  render_mode: "placeholder" | "mixed" | "real_assets";
+  render_mode: "placeholder" | "mixed" | "real_assets" | "video_segments";
   scene_asset_count: number;
   audio_asset_count: number;
   updated_at: string;
@@ -156,7 +187,7 @@ export type ExportStatus = {
   export_file?: string | null;
   total_duration?: number | null;
   shot_count: number;
-  render_mode: "placeholder" | "mixed" | "real_assets";
+  render_mode: "placeholder" | "mixed" | "real_assets" | "video_segments";
   scene_asset_count: number;
   audio_asset_count: number;
   error_message?: string | null;
@@ -169,12 +200,16 @@ export type ProjectDetail = {
   source_text: string;
   genre?: string | null;
   style_template?: string | null;
+  video_style?: string | null;
   target_duration: number;
   voice_style?: string | null;
+  aspect_ratio?: string | null;
+  bgm_style?: string | null;
   status: ProjectStatus;
   created_at: string;
   updated_at: string;
   storage: ProjectStoragePaths;
+  video_plan?: VideoGenerationPlan | null;
   storyboard?: StoryboardDraft | null;
   assets: ProjectAssets;
 };
@@ -184,8 +219,11 @@ export type ProjectListItem = {
   title: string;
   genre?: string | null;
   style_template?: string | null;
+  video_style?: string | null;
   target_duration: number;
   voice_style?: string | null;
+  aspect_ratio?: string | null;
+  bgm_style?: string | null;
   status: ProjectStatus;
   updated_at: string;
   created_at: string;
@@ -199,8 +237,11 @@ export type CreateProjectPayload = {
   source_text: string;
   genre?: string;
   style_template?: string;
+  video_style?: string;
   target_duration: number;
   voice_style?: string;
+  aspect_ratio?: string;
+  bgm_style?: string;
 };
 
 export type ReplaceProjectAssetPayload = {

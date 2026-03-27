@@ -25,10 +25,17 @@ class Settings(BaseSettings):
     ark_image_model: str = "doubao-seedream-4-5-251128"
     minimax_api_key: str = ""
     minimax_base_url: str = "https://api.minimaxi.com/v1"
+    minimax_video_model: str = "MiniMax-Hailuo-2.3"
+    minimax_video_duration_seconds: int = 6
+    minimax_video_resolution: str = "1080P"
     minimax_tts_model: str = "speech-2.8-hd"
     minimax_tts_voice_id: str = "male-qn-qingse"
     minimax_tts_emotion: str = "happy"
     minimax_tts_audio_format: str = "mp3"
+    http_proxy_url: str = ""
+    video_download_proxy_url: str = ""
+    video_download_proxy_token: str = ""
+    video_download_timeout_seconds: int = 300
 
     model_config = SettingsConfigDict(
         env_file=(str(PROJECT_ROOT / ".env"), str(BACKEND_ROOT / ".env")),

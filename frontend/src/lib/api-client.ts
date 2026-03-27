@@ -21,6 +21,10 @@ export function buildProjectAssetFileUrl(
   return `${API_BASE_URL}/api/projects/${projectId}/assets/${assetType}/${targetId}/file`;
 }
 
+export function buildProjectExportFileUrl(projectId: string) {
+  return `${API_BASE_URL}/api/projects/${projectId}/export/file`;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -50,6 +54,22 @@ export const apiClient = {
   },
   getProject(projectId: string) {
     return request<ProjectDetail>(`/api/projects/${projectId}`);
+  },
+  generateVideoProject(projectId: string) {
+    return request<ProjectDetail>(`/api/projects/${projectId}/generate`, {
+      method: "POST"
+    });
+  },
+  selectSegmentVariant(projectId: string, segmentId: string, variantId: string) {
+    return request<ProjectDetail>(`/api/projects/${projectId}/segments/${segmentId}/select`, {
+      method: "POST",
+      body: JSON.stringify({ variant_id: variantId })
+    });
+  },
+  regenerateSegment(projectId: string, segmentId: string) {
+    return request<ProjectDetail>(`/api/projects/${projectId}/segments/${segmentId}/regenerate`, {
+      method: "POST"
+    });
   },
   generateScriptDraft(projectId: string) {
     return request<ProjectDetail>(`/api/projects/${projectId}/script-draft`, {

@@ -53,6 +53,26 @@ bash scripts/start_manga_project.sh
 - 后端：`http://127.0.0.1:8000`
 - 健康检查：`http://127.0.0.1:8000/health`
 
+如果你已经切到 `MiniMax 视频模型主导` 这条链路，并且当前机器无法直连模型返回的远程视频地址，可以额外启动一个视频下载中转服务，再把主后端指向它：
+
+```bash
+cd /Users/zhengy1/Documents/后端学习/漫剧项目
+VIDEO_DOWNLOAD_PROXY_TOKEN=your-shared-token \
+bash scripts/start_video_download_proxy.sh
+```
+
+默认中转地址：
+
+- 视频下载中转：`http://127.0.0.1:8010`
+- 健康检查：`http://127.0.0.1:8010/health`
+
+主后端可这样配置：
+
+```bash
+VIDEO_DOWNLOAD_PROXY_URL=http://127.0.0.1:8010/proxy
+VIDEO_DOWNLOAD_PROXY_TOKEN=your-shared-token
+```
+
 日志目录：
 
 - `tmp/local-stack/logs/backend.log`
@@ -80,6 +100,9 @@ bash scripts/start_manga_project.sh
 - `POSTGRES_DB`
 - `DATABASE_URL`
 - `DATA_ROOT`
+- `HTTP_PROXY_URL`
+- `VIDEO_DOWNLOAD_PROXY_URL`
+- `VIDEO_DOWNLOAD_PROXY_TOKEN`
 
 项目默认环境变量样板见：
 

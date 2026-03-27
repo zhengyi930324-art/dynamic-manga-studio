@@ -15,6 +15,7 @@ class JobType(str, Enum):
     character_image = "character_image"
     scene_image = "scene_image"
     tts = "tts"
+    video_segment = "video_segment"
 
 
 class JobStatus(str, Enum):
